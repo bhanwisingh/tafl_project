@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DFA Minimizer</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#f5f4f0;--surface:#ffffff;--surface2:#f0efe9;
+  --border:#dddbd3;--border2:#c8c5bb;
+  --text:#1a1916;--text-mid:#6b6860;--text-dim:#a09d96;
+  --accent:#1a1916;--accent-inv:#f5f4f0;
+  --green:#1a7a4a;--green-bg:#e8f5ee;
+  --red:#c0392b;--red-bg:#fbeae8;
+  --blue:#1a4a7a;--blue-bg:#e8eef5;
+  --yellow:#8a6c00;--yellow-bg:#fdf8e1;
+  --sidebar-w:220px;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'IBM Plex Sans',sans-serif;
+  --radius:6px;
+  --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.04);
+}
+html{font-size:14px;}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;}
+
+/* ── LAYOUT ── */
+.app{display:flex;min-height:100vh;}
+
+/* ── SIDEBAR ── */
+.sidebar{
+  width:var(--sidebar-w);background:var(--text);color:var(--accent-inv);
+  display:flex;flex-direction:column;position:sticky;top:0;height:100vh;
+  flex-shrink:0;z-index:100;
+}
+.brand{
+  display:flex;align-items:center;gap:10px;padding:24px 20px;
+  font-family:var(--mono);font-size:15px;color:#fff;
+  border-bottom:1px solid rgba(255,255,255,.1);letter-spacing:.02em;
+}
+.brand strong{color:#fff;font-weight:600;}
+.steps-nav{padding:20px 0;flex:1;}
+.nav-item{
+  display:flex;align-items:center;gap:12px;padding:12px 20px;
+  cursor:pointer;transition:background .15s;border-left:3px solid transparent;
+}
+.nav-item:hover{background:rgba(255,255,255,.06);}
+.nav-item.active{background:rgba(255,255,255,.1);border-left-color:#fff;}
+.nav-num{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.4);letter-spacing:.1em;min-width:24px;}
+.nav-item.active .nav-num{color:rgba(255,255,255,.7);}
+.nav-label{font-size:13px;font-weight:400;color:rgba(255,255,255,.7);}
+.nav-item.active .nav-label{color:#fff;font-weight:600;}
+.sidebar-footer{padding:20px;border-top:1px solid rgba(255,255,255,.1);}
+.legend{display:flex;flex-direction:column;gap:6px;}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:11px;color:rgba(255,255,255,.45);font-family:var(--mono);}
+.dot{width:10px;height:10px;border-radius:50%;border:1.5px solid;}
+.dot.start{border-color:#f0c040;}
+.dot.accept{border-color:#4caf82;box-shadow:0 0 0 2px rgba(76,175,130,.3);}
+.dot.both{border-color:#e07040;}
+.dot.normal{border-color:rgba(255,255,255,.4);}
+
+/* ── CONTENT ── */
+.content{flex:1;overflow-y:auto;}
+
+/* ── SECTIONS (now all visible stacked) ── */
+.page-section{
+  padding:48px 56px 60px;
+  max-width:1000px;
+  border-bottom:2px solid var(--border);
+  position:relative;
+}
+.page-section:last-child{border-bottom:none;}
+
+/* Section anchor highlight */
+.page-section.highlight-pulse{animation:sectionPulse .6s ease;}
+@keyframes sectionPulse{
+  0%{background:transparent;}
+  30%{background:rgba(26,25,22,.03);}
+  100%{background:transparent;}
+}
+
+.section-header{margin-bottom:36px;}
+.section-tag{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px;}
+.section-header h1{font-family:var(--sans);font-size:28px;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:8px;}
+.section-header p{font-size:14px;color:var(--text-mid);}
+
+/* ── INPUT ── */
+.input-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;}
+.input-card{display:flex;flex-direction:column;gap:6px;}
+.input-card.full{grid-column:1/-1;}
+label{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mid);}
+.field-hint{font-family:var(--mono);font-size:11px;color:var(--text-dim);}
+input,textarea{
+  background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius);
+  padding:10px 14px;font-family:var(--mono);font-size:13px;color:var(--text);
+  outline:none;transition:border-color .15s,box-shadow .15s;resize:vertical;
+}
+input:focus,textarea:focus{border-color:var(--text);box-shadow:0 0 0 3px rgba(26,25,22,.08);}
+input::placeholder,textarea::placeholder{color:var(--text-dim);}
+.action-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;font-family:var(--sans);font-size:13px;
+  font-weight:600;padding:9px 20px;border-radius:var(--radius);cursor:pointer;
+  border:1.5px solid;transition:all .15s;text-transform:uppercase;letter-spacing:.04em;
+}
+.btn.sm{padding:6px 14px;font-size:12px;}
+.btn.primary{background:var(--text);color:var(--accent-inv);border-color:var(--text);}
+.btn.primary:hover{background:#333;border-color:#333;}
+.btn.ghost{background:transparent;color:var(--text-mid);border-color:var(--border2);}
+.btn.ghost:hover{border-color:var(--text);color:var(--text);background:var(--surface2);}
+.error-box{margin-top:12px;font-family:var(--mono);font-size:12px;color:var(--red);min-height:18px;}
+
+/* ── HIDDEN UNTIL RUN ── */
+.results-area{display:none;}
+.results-area.visible{display:block;}
+
+/* ── TWO COL ── */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;}
+.graph-panel,.table-panel{
+  background:var(--surface);border:1.5px solid var(--border);
+  border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);
+}
+.panel-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.15em;color:var(--text-dim);margin-bottom:14px;}
+canvas{display:block;width:100%;height:auto;}
+
+/* ── TABLE ── */
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;}
+th{background:var(--surface2);text-align:center;padding:7px 12px;font-weight:600;font-size:11px;letter-spacing:.06em;border:1px solid var(--border);color:var(--text-mid);}
+td{text-align:center;padding:7px 12px;border:1px solid var(--border);color:var(--text);}
+tr:hover td{background:var(--surface2);}
+.td-start{color:var(--yellow);font-weight:600;}
+.td-accept{color:var(--green);font-weight:600;}
+.td-both{color:var(--red);font-weight:600;}
+
+/* ── STATS ── */
+.dfa-stats{margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;}
+.stat-chip{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);color:var(--text-mid);}
+.stat-chip strong{color:var(--text);}
+
+/* ── ALGO ── */
+.algo-controls{
+  display:flex;align-items:center;gap:16px;margin-bottom:28px;
+  background:var(--surface);border:1.5px solid var(--border);
+  border-radius:var(--radius);padding:14px 20px;box-shadow:var(--shadow);
+}
+.algo-progress{flex:1;display:flex;flex-direction:column;gap:6px;}
+.progress-track{height:3px;background:var(--border);border-radius:2px;overflow:hidden;}
+.progress-fill{height:100%;background:var(--text);border-radius:2px;transition:width .3s ease;}
+#algo-step-label{font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.06em;}
+.algo-body{
+  background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius);
+  padding:28px;box-shadow:var(--shadow);min-height:220px;
+}
+.step-title{font-size:17px;font-weight:700;color:var(--text);margin-bottom:6px;}
+.step-desc{font-size:13px;color:var(--text-mid);margin-bottom:24px;line-height:1.7;max-width:640px;}
+.partition-row{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px;}
+.pblock{border:1.5px solid var(--border);border-radius:var(--radius);padding:12px 16px;min-width:120px;background:var(--surface2);transition:border-color .3s,box-shadow .3s,background .3s;}
+.pblock.new-split{border-color:var(--red);background:var(--red-bg);}
+.pblock.unchanged{border-color:var(--border);}
+.pblock.merged{border-color:var(--green);background:var(--green-bg);}
+.pblock-label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;}
+.pblock.new-split .pblock-label{color:var(--red);}
+.pblock.merged .pblock-label{color:var(--green);}
+.pblock-states{display:flex;flex-wrap:wrap;gap:5px;}
+.schip{font-family:var(--mono);font-size:12px;padding:2px 8px;border-radius:3px;border:1px solid var(--border2);background:var(--surface);color:var(--text);}
+.schip.is-accept{border-color:var(--green);color:var(--green);}
+.schip.is-start{border-color:var(--yellow);color:var(--yellow);}
+.split-detail{margin-top:16px;padding:14px 16px;background:var(--red-bg);border:1px solid var(--red);border-radius:var(--radius);font-family:var(--mono);font-size:12px;color:var(--red);}
+.split-detail strong{font-weight:600;}
+.converge-note{margin-top:16px;padding:14px 16px;background:var(--green-bg);border:1px solid var(--green);border-radius:var(--radius);font-family:var(--mono);font-size:12px;color:var(--green);}
+
+/* ── COMPARISON BANNER ── */
+.comparison-banner{display:flex;align-items:center;gap:0;margin-bottom:24px;border:1.5px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);}
+.cmp-side{flex:1;padding:16px 24px;background:var(--surface);}
+.cmp-side.right{background:var(--surface2);}
+.cmp-arrow{padding:0 16px;font-size:20px;color:var(--text-dim);background:var(--surface);align-self:stretch;display:flex;align-items:center;border-left:1px solid var(--border);border-right:1px solid var(--border);}
+.cmp-num{font-family:var(--mono);font-size:28px;font-weight:600;color:var(--text);line-height:1;}
+.cmp-side.right .cmp-num{color:var(--green);}
+.cmp-lbl{font-size:11px;color:var(--text-dim);margin-top:2px;text-transform:uppercase;letter-spacing:.08em;}
+.cmp-reduction{font-family:var(--mono);font-size:13px;color:var(--green);margin-top:4px;font-weight:600;}
+
+/* ── EQUIV CLASSES ── */
+.equiv-classes{margin-top:0;margin-bottom:8px;}
+.equiv-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text-dim);margin-bottom:12px;}
+.equiv-row{display:flex;flex-wrap:wrap;gap:10px;}
+.equiv-chip{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);font-family:var(--mono);font-size:12px;}
+.equiv-chip .arrow{color:var(--text-dim);}
+.equiv-chip .new-name{font-weight:600;color:var(--text);}
+.equiv-chip .old-names{color:var(--text-mid);}
+
+/* ── SECTION DIVIDER ── */
+.section-divider{display:flex;align-items:center;gap:16px;padding:0 56px;margin:0;}
+.divider-line{flex:1;height:1px;background:var(--border);}
+.divider-num{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--text-dim);}
+
+/* ── MERGE ANIMATION CANVAS WRAPPER ── */
+.merge-canvas-wrap{position:relative;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);}
+.merge-controls{display:flex;align-items:center;gap:12px;margin-top:14px;}
+.merge-label{font-family:var(--mono);font-size:11px;color:var(--text-dim);flex:1;}
+#btn-play-merge{min-width:100px;}
+
+/* ── RESPONSIVE ── */
+@media(max-width:860px){
+  .sidebar{display:none;}
+  .page-section{padding:28px 20px 60px;}
+  .two-col{grid-template-columns:1fr;}
+  .input-grid{grid-template-columns:1fr;}
+  .input-card.full{grid-column:1;}
+  .section-divider{padding:0 20px;}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <rect x="2" y="2" width="10" height="10" rx="2" fill="var(--accent)"/>
+        <rect x="16" y="2" width="10" height="10" rx="2" fill="var(--accent)" opacity=".4"/>
+        <rect x="2" y="16" width="10" height="10" rx="2" fill="var(--accent)" opacity=".4"/>
+        <rect x="16" y="16" width="10" height="10" rx="2" fill="var(--accent)"/>
+      </svg>
+      <span>DFA<strong>min</strong></span>
+    </div>
+    <nav class="steps-nav">
+      <div class="nav-item active" onclick="scrollTo('sec-input')">
+        <span class="nav-num">01</span><span class="nav-label">Define DFA</span>
+      </div>
+      <div class="nav-item" id="nav-original" onclick="scrollTo('sec-original')">
+        <span class="nav-num">02</span><span class="nav-label">Original DFA</span>
+      </div>
+      <div class="nav-item" id="nav-algorithm" onclick="scrollTo('sec-algorithm')">
+        <span class="nav-num">03</span><span class="nav-label">Algorithm</span>
+      </div>
+      <div class="nav-item" id="nav-merge" onclick="scrollTo('sec-merge')">
+        <span class="nav-num">04</span><span class="nav-label">Merge Animation</span>
+      </div>
+      <div class="nav-item" id="nav-result" onclick="scrollTo('sec-result')">
+        <span class="nav-num">05</span><span class="nav-label">Minimized DFA</span>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="legend">
+        <div class="legend-item"><span class="dot start"></span>Start</div>
+        <div class="legend-item"><span class="dot accept"></span>Accept</div>
+        <div class="legend-item"><span class="dot both"></span>Start+Accept</div>
+        <div class="legend-item"><span class="dot normal"></span>Normal</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="content">
+
+    <!-- 01 INPUT -->
+    <section class="page-section" id="sec-input">
+      <div class="section-header">
+        <div class="section-tag">01 / DEFINE</div>
+        <h1>Define Your DFA</h1>
+        <p>Enter the components of your deterministic finite automaton below.</p>
+      </div>
+      <div class="input-grid">
+        <div class="input-card">
+          <label>States</label>
+          <input type="text" id="inp-states" placeholder="q0, q1, q2, q3, q4"/>
+          <span class="field-hint">Comma-separated identifiers</span>
+        </div>
+        <div class="input-card">
+          <label>Alphabet</label>
+          <input type="text" id="inp-alphabet" placeholder="0, 1"/>
+          <span class="field-hint">Comma-separated symbols</span>
+        </div>
+        <div class="input-card">
+          <label>Start State</label>
+          <input type="text" id="inp-start" placeholder="q0"/>
+          <span class="field-hint">Single initial state</span>
+        </div>
+        <div class="input-card">
+          <label>Accept States</label>
+          <input type="text" id="inp-accept" placeholder="q3, q4"/>
+          <span class="field-hint">Comma-separated</span>
+        </div>
+        <div class="input-card full">
+          <label>Transitions</label>
+          <textarea id="inp-transitions" rows="8" placeholder="q0,0,q1&#10;q0,1,q2&#10;q1,0,q3&#10;q1,1,q4&#10;q2,0,q4&#10;q2,1,q3&#10;q3,0,q3&#10;q3,1,q3&#10;q4,0,q4&#10;q4,1,q4"></textarea>
+          <span class="field-hint">One per line: state, symbol, nextState</span>
+        </div>
+      </div>
+      <div class="action-row">
+        <button class="btn ghost" id="btn-example">Load Example</button>
+        <button class="btn ghost" id="btn-clear">Clear</button>
+        <button class="btn primary" id="btn-run">
+          <span>Run Minimization</span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="error-box" id="error-box"></div>
+    </section>
+
+    <!-- results wrapper (hidden until run) -->
+    <div class="results-area" id="results-area">
+
+      <!-- 02 ORIGINAL -->
+      <section class="page-section" id="sec-original">
+        <div class="section-header">
+          <div class="section-tag">02 / ORIGINAL</div>
+          <h1>Original DFA</h1>
+          <p>Visual representation of your input automaton before minimization.</p>
+        </div>
+        <div class="two-col">
+          <div class="graph-panel">
+            <div class="panel-label">State Diagram</div>
+            <canvas id="canvas-original"></canvas>
+          </div>
+          <div class="table-panel">
+            <div class="panel-label">Transition Table</div>
+            <div id="table-original"></div>
+            <div class="dfa-stats" id="stats-original"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 03 ALGORITHM -->
+      <section class="page-section" id="sec-algorithm">
+        <div class="section-header">
+          <div class="section-tag">03 / ALGORITHM</div>
+          <h1>Partition Refinement</h1>
+          <p>Step through each iteration of the minimization algorithm.</p>
+        </div>
+        <div class="algo-controls">
+          <button class="btn ghost sm" id="btn-algo-prev">← Prev</button>
+          <div class="algo-progress">
+            <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+            <span id="algo-step-label">Step 1 / 1</span>
+          </div>
+          <button class="btn ghost sm" id="btn-algo-next">Next →</button>
+        </div>
+        <div class="algo-body" id="algo-body"></div>
+      </section>
+
+      <!-- 04 MERGE ANIMATION -->
+      <section class="page-section" id="sec-merge">
+        <div class="section-header">
+          <div class="section-tag">04 / ANIMATE</div>
+          <h1>State Merge Animation</h1>
+          <p>Watch equivalent states travel toward each other and merge into one.</p>
+        </div>
+        <div class="merge-canvas-wrap">
+          <div class="panel-label">Live Merge Visualization</div>
+          <canvas id="canvas-merge"></canvas>
+          <div class="merge-controls">
+            <span class="merge-label" id="merge-label">Press Play to animate the state merges</span>
+            <button class="btn ghost sm" id="btn-play-merge">▶ Play</button>
+            <button class="btn ghost sm" id="btn-reset-merge">↺ Reset</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 05 RESULT -->
+      <section class="page-section" id="sec-result">
+        <div class="section-header">
+          <div class="section-tag">05 / RESULT</div>
+          <h1>Minimized DFA</h1>
+          <p>The reduced automaton with equivalent states merged.</p>
+        </div>
+        <div class="comparison-banner" id="comparison-banner"></div>
+        <div class="two-col">
+          <div class="graph-panel">
+            <div class="panel-label">State Diagram</div>
+            <canvas id="canvas-result"></canvas>
+          </div>
+          <div class="table-panel">
+            <div class="panel-label">Transition Table</div>
+            <div id="table-result"></div>
+            <div class="dfa-stats" id="stats-result"></div>
+          </div>
+        </div>
+        <div class="equiv-classes" id="equiv-classes"></div>
+        <div style="margin-top:32px;">
+          <button class="btn ghost" id="btn-restart">↑ Start Over</button>
+        </div>
+      </section>
+
+    </div><!-- /results-area -->
+  </main>
+</div>
+
+<script>
+/* ============================================================
+   ALGORITHM CORE
+   ============================================================ */
+function getReachable(dfa){
+  var visited=[dfa.startState],queue=[dfa.startState];
+  while(queue.length){
+    var s=queue.shift();
+    for(var i=0;i<dfa.alphabet.length;i++){
+      var sym=dfa.alphabet[i],t=dfa.transition[s]&&dfa.transition[s][sym];
+      if(t!=null&&visited.indexOf(t)<0){visited.push(t);queue.push(t);}
+    }
+  }
+  return visited;
+}
+
+function minimizeDFA(dfa){
+  var alphabet=dfa.alphabet,transition=dfa.transition,startState=dfa.startState,finalStates=dfa.finalStates;
+  var states=getReachable(dfa);
+  var accGroup=states.filter(function(s){return finalStates.indexOf(s)>=0;});
+  var nonAccGroup=states.filter(function(s){return finalStates.indexOf(s)<0;});
+  var P=[];
+  if(accGroup.length) P.push(accGroup.slice());
+  if(nonAccGroup.length) P.push(nonAccGroup.slice());
+  var steps=[];
+  steps.push({type:'init',title:'Initial Partition',
+    description:'Divide all states into two groups: accepting states (F) and non-accepting states (Q \\ F). States in different groups are trivially distinguishable.',
+    partition:deepCopy(P),splits:[]});
+  var changed=true,iteration=0;
+  while(changed){
+    changed=false;iteration++;
+    var newP=[],splits=[];
+    for(var gi=0;gi<P.length;gi++){
+      var group=P[gi],sigMap={};
+      for(var si=0;si<group.length;si++){
+        var state=group[si],sig='';
+        for(var ai=0;ai<alphabet.length;ai++){
+          var sym=alphabet[ai],next=transition[state]&&transition[state][sym];
+          var idx=next!=null?findGroup(P,next):-2;
+          sig+=idx+',';
+        }
+        if(!sigMap[sig]) sigMap[sig]=[];
+        sigMap[sig].push(state);
+      }
+      var subGroups=Object.values(sigMap);
+      newP.push.apply(newP,subGroups);
+      if(subGroups.length>1){
+        changed=true;
+        splits.push({original:group.slice(),result:subGroups.map(function(g){return g.slice();})});
+      }
+    }
+    P=newP;
+    steps.push({type:splits.length>0?'refine':'converge',
+      title:splits.length>0?'Iteration '+iteration+' — Groups Split':'Iteration '+iteration+' — Converged',
+      description:splits.length>0?splits.length+' group(s) were split because some states transition to different partitions on the same symbol.':'No groups were split. Every state in each group transitions to the same partition on every symbol. The algorithm has converged.',
+      partition:deepCopy(P),splits:deepCopy(splits)});
+    if(!changed) break;
+  }
+  var stateMap={};
+  for(var pi=0;pi<P.length;pi++){var grp=P[pi],newName='Q'+pi;for(var si=0;si<grp.length;si++) stateMap[grp[si]]=newName;}
+  var newStates=[],newTransition={};
+  for(var pi=0;pi<P.length;pi++){
+    var grp=P[pi],newName='Q'+pi;
+    newStates.push(newName);newTransition[newName]={};
+    var rep=grp[0];
+    for(var ai=0;ai<alphabet.length;ai++){
+      var sym=alphabet[ai],next=transition[rep]&&transition[rep][sym];
+      if(next!=null) newTransition[newName][sym]=stateMap[next];
+    }
+  }
+  var newStart=stateMap[startState],newFinals=[],seen={};
+  for(var fi=0;fi<finalStates.length;fi++){
+    var mapped=stateMap[finalStates[fi]];
+    if(mapped!=null&&!seen[mapped]){seen[mapped]=true;newFinals.push(mapped);}
+  }
+  steps.push({type:'merge',title:'Build Minimized DFA',
+    description:'Each equivalence class becomes one state. Pick a representative from each class and carry over its transitions.',
+    partition:deepCopy(P),splits:[],stateMap:deepCopy(stateMap)});
+  return{steps:steps,stateMap:stateMap,classes:deepCopy(P),minimizedDFA:{states:newStates,alphabet:alphabet,transition:newTransition,startState:newStart,finalStates:newFinals}};
+}
+
+function findGroup(P,state){for(var i=0;i<P.length;i++){if(P[i].indexOf(state)>=0) return i;}return -1;}
+function deepCopy(obj){return JSON.parse(JSON.stringify(obj));}
+
+/* ============================================================
+   PARSING
+   ============================================================ */
+function parseDFA(){
+  var states=document.getElementById('inp-states').value.split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var alphabet=document.getElementById('inp-alphabet').value.split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var start=document.getElementById('inp-start').value.trim();
+  var accept=document.getElementById('inp-accept').value.split(',').map(function(s){return s.trim();}).filter(Boolean);
+  if(!states.length) return{error:'States list is empty.'};
+  if(!alphabet.length) return{error:'Alphabet is empty.'};
+  if(!start) return{error:'Start state is empty.'};
+  if(states.indexOf(start)<0) return{error:'Start state "'+start+'" not in states.'};
+  for(var ai=0;ai<accept.length;ai++) if(states.indexOf(accept[ai])<0) return{error:'Accept state "'+accept[ai]+'" not in states.'};
+  var transition={};
+  states.forEach(function(s){transition[s]={};});
+  var lines=document.getElementById('inp-transitions').value.split('\n').map(function(l){return l.trim();}).filter(Boolean);
+  for(var li=0;li<lines.length;li++){
+    var parts=lines[li].split(',').map(function(x){return x.trim();});
+    if(parts.length!==3) return{error:'Bad transition "'+lines[li]+'" — use: state,symbol,nextState'};
+    var from=parts[0],sym=parts[1],to=parts[2];
+    if(states.indexOf(from)<0) return{error:'Unknown state "'+from+'".'};
+    if(states.indexOf(to)<0) return{error:'Unknown state "'+to+'".'};
+    if(alphabet.indexOf(sym)<0) return{error:'Unknown symbol "'+sym+'".'};
+    transition[from][sym]=to;
+  }
+  return{states:states,alphabet:alphabet,startState:start,finalStates:accept,transition:transition};
+}
+
+/* ============================================================
+   APP STATE
+   ============================================================ */
+var appData={dfa:null,result:null,algoStep:0};
+var EXAMPLE={
+  states:'q0, q1, q2, q3, q4',alphabet:'0, 1',start:'q0',accept:'q3, q4',
+  transitions:'q0,0,q1\nq0,1,q2\nq1,0,q3\nq1,1,q4\nq2,0,q4\nq2,1,q3\nq3,0,q3\nq3,1,q3\nq4,0,q4\nq4,1,q4'
+};
+
+/* ============================================================
+   NAV SCROLL
+   ============================================================ */
+function scrollTo(id){
+  var el=document.getElementById(id);
+  if(!el) return;
+  el.scrollIntoView({behavior:'smooth',block:'start'});
+  el.classList.remove('highlight-pulse');
+  void el.offsetWidth;
+  el.classList.add('highlight-pulse');
+  // update sidebar active
+  document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active');});
+  var map={'sec-input':'nav-input','sec-original':'nav-original','sec-algorithm':'nav-algorithm','sec-merge':'nav-merge','sec-result':'nav-result'};
+  var navId=map[id];
+  var navEl=navId?document.getElementById(navId):null;
+  if(!navEl) navEl=document.querySelector('.nav-item');
+  if(navEl) navEl.classList.add('active');
+}
+
+// Update active nav on scroll
+var sections=['sec-input','sec-original','sec-algorithm','sec-merge','sec-result'];
+var navIds=['','nav-original','nav-algorithm','nav-merge','nav-result'];
+window.addEventListener('scroll',function(){
+  var best=0,bestEl=null;
+  document.querySelectorAll('.page-section').forEach(function(el,i){
+    var r=el.getBoundingClientRect();
+    if(r.top<=120&&r.bottom>0) bestEl=el;
+  });
+  if(!bestEl) return;
+  document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active');});
+  var idx=sections.indexOf(bestEl.id);
+  if(idx===0){document.querySelector('.nav-item').classList.add('active');}
+  else if(idx>0){var n=document.getElementById(navIds[idx]);if(n) n.classList.add('active');}
+},true);
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+document.getElementById('btn-example').addEventListener('click',function(){
+  document.getElementById('inp-states').value=EXAMPLE.states;
+  document.getElementById('inp-alphabet').value=EXAMPLE.alphabet;
+  document.getElementById('inp-start').value=EXAMPLE.start;
+  document.getElementById('inp-accept').value=EXAMPLE.accept;
+  document.getElementById('inp-transitions').value=EXAMPLE.transitions;
+  document.getElementById('error-box').textContent='';
+});
+document.getElementById('btn-clear').addEventListener('click',function(){
+  ['inp-states','inp-alphabet','inp-start','inp-accept','inp-transitions'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('error-box').textContent='';
+});
+document.getElementById('btn-run').addEventListener('click',function(){
+  var errEl=document.getElementById('error-box');
+  errEl.textContent='';
+  var dfa=parseDFA();
+  if(dfa.error){errEl.textContent='⚠ '+dfa.error;return;}
+  var result=minimizeDFA(dfa);
+  appData.dfa=dfa;appData.result=result;appData.algoStep=0;
+  renderOriginal(dfa);
+  renderAlgorithm(result,dfa);
+  renderResult(result,dfa);
+  setupMergeAnimation(dfa,result);
+  document.getElementById('results-area').classList.add('visible');
+  setTimeout(function(){scrollTo('sec-original');},80);
+});
+document.getElementById('btn-restart').addEventListener('click',function(){
+  document.getElementById('results-area').classList.remove('visible');
+  scrollTo('sec-input');
+});
+document.getElementById('btn-algo-prev').addEventListener('click',function(){
+  if(appData.algoStep>0){appData.algoStep--;showAlgoStep(appData.result.steps,appData.dfa);}
+});
+document.getElementById('btn-algo-next').addEventListener('click',function(){
+  if(appData.result&&appData.algoStep<appData.result.steps.length-1){appData.algoStep++;showAlgoStep(appData.result.steps,appData.dfa);}
+});
+
+/* ============================================================
+   RENDER ORIGINAL
+   ============================================================ */
+function renderOriginal(dfa){
+  document.getElementById('table-original').innerHTML=buildTable(dfa);
+  document.getElementById('stats-original').innerHTML=buildStats(dfa);
+  drawDFA('canvas-original',dfa);
+}
+
+/* ============================================================
+   RENDER ALGORITHM
+   ============================================================ */
+function renderAlgorithm(result,dfa){appData.algoStep=0;showAlgoStep(result.steps,dfa);}
+function showAlgoStep(steps,dfa){
+  var i=appData.algoStep,total=steps.length,step=steps[i];
+  document.getElementById('algo-step-label').textContent='Step '+(i+1)+' / '+total;
+  document.getElementById('progress-fill').style.width=((i+1)/total*100)+'%';
+  document.getElementById('btn-algo-prev').disabled=(i===0);
+  document.getElementById('btn-algo-next').disabled=(i===total-1);
+  var html='';
+  html+='<div class="step-title">'+step.title+'</div>';
+  html+='<div class="step-desc">'+step.description+'</div>';
+  html+='<div class="partition-row">';
+  var partition=step.partition,splitSets={};
+  if(step.splits) for(var si=0;si<step.splits.length;si++){var sp=step.splits[si];for(var ri=0;ri<sp.result.length;ri++) for(var ki=0;ki<sp.result[ri].length;ki++) splitSets[sp.result[ri][ki]]=ri;}
+  for(var pi=0;pi<partition.length;pi++){
+    var group=partition[pi],blockClass='unchanged',hasSplit=false;
+    for(var ki=0;ki<group.length;ki++){if(splitSets[group[ki]]!==undefined){hasSplit=true;break;}}
+    if(step.type==='merge') blockClass='merged';
+    else if(hasSplit&&step.type==='refine') blockClass='new-split';
+    var label=step.type==='merge'?('Q'+pi+' &nbsp;←&nbsp; {'+group.join(', ')+'}'): ('Group '+(pi+1));
+    html+='<div class="pblock '+blockClass+'">';
+    html+='<div class="pblock-label">'+label+'</div>';
+    html+='<div class="pblock-states">';
+    for(var ki=0;ki<group.length;ki++){
+      var st=group[ki],chipCls='';
+      if(dfa.finalStates.indexOf(st)>=0&&st===dfa.startState) chipCls='is-both';
+      else if(dfa.finalStates.indexOf(st)>=0) chipCls='is-accept';
+      else if(st===dfa.startState) chipCls='is-start';
+      html+='<span class="schip '+chipCls+'">'+st+'</span>';
+    }
+    html+='</div></div>';
+  }
+  html+='</div>';
+  if(step.splits&&step.splits.length>0&&step.type==='refine'){
+    for(var si=0;si<step.splits.length;si++){
+      var sp=step.splits[si];
+      html+='<div class="split-detail"><strong>{'+sp.original.join(', ')+'}</strong> was split into: ';
+      for(var ri=0;ri<sp.result.length;ri++){html+='{'+sp.result[ri].join(', ')+'}';if(ri<sp.result.length-1) html+='  and  ';}
+      html+='</div>';
+    }
+  }
+  if(step.type==='converge') html+='<div class="converge-note">✓ Fixed point reached — no further refinement possible. These are the final equivalence classes.</div>';
+  document.getElementById('algo-body').innerHTML=html;
+}
+
+/* ============================================================
+   RENDER RESULT
+   ============================================================ */
+function renderResult(result,origDFA){
+  var min=result.minimizedDFA;
+  var origN=origDFA.states.length,minN=min.states.length,saved=origN-minN;
+  var banner='<div class="cmp-side"><div class="cmp-num">'+origN+'</div><div class="cmp-lbl">Original States</div></div>'+
+    '<div class="cmp-arrow">→</div>'+
+    '<div class="cmp-side right"><div class="cmp-num">'+minN+'</div><div class="cmp-lbl">Minimized States</div>'+
+    (saved>0?'<div class="cmp-reduction">↓ '+saved+' state(s) eliminated</div>':'<div class="cmp-reduction" style="color:var(--yellow)">Already minimal</div>')+
+    '</div>';
+  document.getElementById('comparison-banner').innerHTML=banner;
+  document.getElementById('table-result').innerHTML=buildTable(min);
+  document.getElementById('stats-result').innerHTML=buildStats(min);
+  drawDFA('canvas-result',min);
+  var classHtml='<div class="equiv-title">Equivalence Classes</div><div class="equiv-row">';
+  for(var i=0;i<result.classes.length;i++){
+    var cls=result.classes[i],newName='Q'+i;
+    classHtml+='<div class="equiv-chip"><span class="new-name">'+newName+'</span><span class="arrow">←</span><span class="old-names">{'+cls.join(', ')+'}</span></div>';
+  }
+  classHtml+='</div>';
+  document.getElementById('equiv-classes').innerHTML=classHtml;
+}
+
+/* ============================================================
+   TABLE & STATS
+   ============================================================ */
+function buildTable(dfa){
+  var states=dfa.states,alpha=dfa.alphabet,start=dfa.startState,accept=dfa.finalStates,delta=dfa.transition;
+  var html='<table><tr><th>State</th>';
+  for(var ai=0;ai<alpha.length;ai++) html+='<th>δ( · , '+alpha[ai]+')</th>';
+  html+='</tr>';
+  for(var si=0;si<states.length;si++){
+    var s=states[si],isStart=(s===start),isAccept=(accept.indexOf(s)>=0);
+    var cls=(isStart&&isAccept)?'td-both':isAccept?'td-accept':isStart?'td-start':'';
+    var tag=(isStart?'→ ':'')+(isAccept?'* ':'')+s;
+    html+='<tr><td class="'+cls+'">'+tag+'</td>';
+    for(var ai=0;ai<alpha.length;ai++){var sym=alpha[ai];html+='<td>'+((delta[s]&&delta[s][sym])||'—')+'</td>';}
+    html+='</tr>';
+  }
+  return html+'</table>';
+}
+function buildStats(dfa){
+  return[['States',dfa.states.length],['Symbols',dfa.alphabet.length],['Accept',dfa.finalStates.length]]
+    .map(function(p){return'<div class="stat-chip">'+p[0]+': <strong>'+p[1]+'</strong></div>';}).join('');
+}
+
+/* ============================================================
+   CANVAS — DFA DRAWING
+   ============================================================ */
+function drawDFA(canvasId,dfa,highlightGroups,flashStates){
+  var canvas=document.getElementById(canvasId);
+  var states=dfa.states,alpha=dfa.alphabet,start=dfa.startState,accept=dfa.finalStates,delta=dfa.transition,n=states.length;
+  var SR=26,PAD=80;
+  var R=n<=1?0:Math.min(180,Math.max(90,n*44));
+  var W=(R+PAD)*2,H=(R+PAD)*2;
+  var cx=W/2,cy=H/2;
+  var dpr=window.devicePixelRatio||1;
+  canvas.width=W*dpr;canvas.height=H*dpr;
+  canvas.style.width=W+'px';canvas.style.height=H+'px';
+  var ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);ctx.clearRect(0,0,W,H);
+  var C={edge:'#c8c5bb',edgeLabel:'#6b6860',stateStroke:'#1a1916',stateFill:'#ffffff',stateText:'#1a1916',accept:'#1a7a4a',start:'#8a6c00',startArrow:'#8a6c00',loop:'#c8c5bb'};
+  var pos={};
+  for(var i=0;i<n;i++){var angle=(2*Math.PI*i/n)-Math.PI/2;pos[states[i]]={x:cx+R*Math.cos(angle),y:cy+R*Math.sin(angle)};}
+  var edgeMap={};
+  for(var si=0;si<states.length;si++){var s=states[si];for(var ai=0;ai<alpha.length;ai++){var sym=alpha[ai],t=delta[s]&&delta[s][sym];if(!t) continue;var key=s+'|||'+t;if(!edgeMap[key]) edgeMap[key]={from:s,to:t,syms:[]};edgeMap[key].syms.push(sym);}}
+  for(var key in edgeMap){var e=edgeMap[key],lbl=e.syms.join(', '),hasBack=!!edgeMap[e.to+'|||'+e.from];if(e.from===e.to) drawSelfLoop(ctx,pos[e.from].x,pos[e.from].y,SR,lbl,C);else drawEdge(ctx,pos[e.from].x,pos[e.from].y,pos[e.to].x,pos[e.to].y,SR,lbl,hasBack,C);}
+  for(var si=0;si<states.length;si++){
+    var s=states[si],p=pos[s],isStart=(s===start),isAccept=(accept.indexOf(s)>=0);
+    var groupColor=null;
+    if(highlightGroups){for(var gi=0;gi<highlightGroups.length;gi++){if(highlightGroups[gi].states.indexOf(s)>=0){groupColor=highlightGroups[gi].color;break;}}}
+    var isFlash=flashStates&&flashStates.indexOf(s)>=0;
+    if(isStart){ctx.save();ctx.strokeStyle=C.startArrow;ctx.fillStyle=C.startArrow;ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(p.x-SR-30,p.y);ctx.lineTo(p.x-SR-5,p.y);ctx.stroke();arrowHead(ctx,p.x-SR-5,p.y,0,C.startArrow);ctx.restore();}
+    if(isAccept){ctx.beginPath();ctx.arc(p.x,p.y,SR+5,0,Math.PI*2);ctx.strokeStyle=groupColor||C.accept;ctx.lineWidth=isFlash?3:1.5;ctx.stroke();}
+    ctx.beginPath();ctx.arc(p.x,p.y,SR,0,Math.PI*2);
+    ctx.fillStyle=isFlash?'#fffbe6':groupColor?groupColor+'22':C.stateFill;
+    ctx.fill();
+    var strokeColor=groupColor||(isAccept?C.accept:isStart?C.start:C.stateStroke);
+    ctx.strokeStyle=strokeColor;ctx.lineWidth=(isAccept||isStart||isFlash)?2:1.5;ctx.stroke();
+    ctx.fillStyle=strokeColor;ctx.font='bold 12px IBM Plex Mono,monospace';ctx.textAlign='center';ctx.textBaseline='middle';
+    var display=s.length>8?s.slice(0,7)+'…':s;
+    ctx.fillText(display,p.x,p.y);
+  }
+  return pos;
+}
+
+function drawEdge(ctx,x1,y1,x2,y2,sr,label,curved,C){
+  var dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy)||1;
+  var ux=dx/len,uy=dy/len;
+  var sx=x1+ux*sr,sy=y1+uy*sr,ex=x2-ux*(sr+4),ey=y2-uy*(sr+4);
+  var angle=Math.atan2(dy,dx);
+  ctx.save();ctx.strokeStyle=C.edge;ctx.lineWidth=1.5;ctx.beginPath();
+  var lx,ly;
+  if(curved){var px=-uy*38,py=ux*38,cpx=(sx+ex)/2+px,cpy=(sy+ey)/2+py;ctx.moveTo(sx,sy);ctx.quadraticCurveTo(cpx,cpy,ex,ey);ctx.stroke();var tang=Math.atan2(ey-cpy,ex-cpx);arrowHead(ctx,ex,ey,tang,C.edge);lx=(sx+ex)/2+px*0.85;ly=(sy+ey)/2+py*0.85;}
+  else{ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.stroke();arrowHead(ctx,ex,ey,angle,C.edge);lx=(sx+ex)/2-uy*12;ly=(sy+ey)/2+ux*12;}
+  ctx.fillStyle=C.edgeLabel;ctx.font='10px IBM Plex Mono,monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,lx,ly);ctx.restore();
+}
+function drawSelfLoop(ctx,x,y,sr,label,C){
+  var loopR=15,loopCy=y-sr-loopR;
+  ctx.save();ctx.strokeStyle=C.loop;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(x,loopCy,loopR,0,Math.PI*2);ctx.stroke();
+  arrowHead(ctx,x+3,loopCy+loopR,1.65,C.loop);
+  ctx.fillStyle=C.edgeLabel;ctx.font='10px IBM Plex Mono,monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,x,loopCy-loopR-9);ctx.restore();
+}
+function arrowHead(ctx,x,y,angle,color){
+  var size=7;ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(-size,-size/2);ctx.lineTo(-size,size/2);ctx.closePath();ctx.fillStyle=color;ctx.fill();ctx.restore();
+}
+
+/* ============================================================
+   MERGE ANIMATION
+   ============================================================ */
+var mergeAnim={
+  canvas:null,ctx:null,
+  dfa:null,classes:null,
+  nodes:[],       // {id, x, y, tx, ty, r, color, label, isAccept, isStart, alpha, merged, mergedInto}
+  phase:0,        // 0=idle 1=spreading 2=converging 3=merged 4=done
+  raf:null,
+  t:0,
+  mergeGroups:[], // groups with >1 state that will merge
+  mergeStep:0,    // which merge group we're on
+  playing:false
+};
+
+// Color palette for groups
+var GROUP_COLORS=['#e07040','#1a7a4a','#1a4a7a','#8a1a7a','#7a6a1a','#1a6a7a'];
+
+function setupMergeAnimation(dfa,result){
+  var canvas=document.getElementById('canvas-merge');
+  mergeAnim.canvas=canvas;
+  mergeAnim.ctx=canvas.getContext('2d');
+  mergeAnim.dfa=dfa;
+  mergeAnim.classes=result.classes;
+  mergeAnim.playing=false;
+  mergeAnim.phase=0;
+  mergeAnim.mergeStep=0;
+  if(mergeAnim.raf){cancelAnimationFrame(mergeAnim.raf);mergeAnim.raf=null;}
+
+  // Find groups that actually merge (size > 1)
+  mergeAnim.mergeGroups=result.classes.filter(function(g){return g.length>1;});
+
+  // Set canvas size
+  var dpr=window.devicePixelRatio||1;
+  var W=580,H=360;
+  canvas.width=W*dpr;canvas.height=H*dpr;
+  canvas.style.width=W+'px';canvas.style.height=H+'px';
+  mergeAnim.ctx.scale(dpr,dpr);
+  mergeAnim.W=W;mergeAnim.H=H;
+
+  initMergeNodes(dfa,result.classes);
+  drawMergeFrame();
+  document.getElementById('merge-label').textContent=
+    mergeAnim.mergeGroups.length===0
+      ? 'DFA is already minimal — no merges needed'
+      : mergeAnim.mergeGroups.length+' equivalence class(es) will be merged. Press Play to animate.';
+  document.getElementById('btn-play-merge').textContent='▶ Play';
+  document.getElementById('btn-play-merge').disabled=mergeAnim.mergeGroups.length===0;
+}
+
+function initMergeNodes(dfa,classes){
+  var W=mergeAnim.W,H=mergeAnim.H;
+  var states=dfa.states,n=states.length;
+  mergeAnim.nodes=[];
+
+  // Place states in a circle
+  var R=Math.min(W,H)*0.35;
+  var cx=W/2,cy=H/2;
+
+  // assign group index & color to each state
+  var stateGroup={},stateColor={};
+  for(var gi=0;gi<classes.length;gi++){
+    for(var si=0;si<classes[gi].length;si++){
+      stateGroup[classes[gi][si]]=gi;
+      stateColor[classes[gi][si]]=GROUP_COLORS[gi%GROUP_COLORS.length];
+    }
+  }
+
+  for(var i=0;i<n;i++){
+    var angle=(2*Math.PI*i/n)-Math.PI/2;
+    var x=cx+R*Math.cos(angle);
+    var y=cy+R*Math.sin(angle);
+    var s=states[i];
+    mergeAnim.nodes.push({
+      id:s, x:x, y:y, sx:x, sy:y, tx:x, ty:y,
+      r:24, color:stateColor[s], label:s,
+      isAccept:dfa.finalStates.indexOf(s)>=0,
+      isStart:dfa.startState===s,
+      alpha:1, merged:false, mergedInto:null,
+      groupIdx:stateGroup[s],
+      groupSize:classes[stateGroup[s]].length
+    });
+  }
+}
+
+function startMergePlay(){
+  if(mergeAnim.playing) return;
+  mergeAnim.playing=true;
+  mergeAnim.mergeStep=0;
+  mergeAnim.phase=0;
+  // reset positions
+  mergeAnim.nodes.forEach(function(nd){nd.x=nd.sx;nd.y=nd.sy;nd.alpha=1;nd.merged=false;nd.mergedInto=null;});
+  document.getElementById('btn-play-merge').textContent='● Playing';
+  runMergePhase();
+}
+
+function runMergePhase(){
+  if(mergeAnim.mergeStep>=mergeAnim.mergeGroups.length){
+    // done
+    mergeAnim.playing=false;
+    document.getElementById('btn-play-merge').textContent='▶ Replay';
+    document.getElementById('merge-label').textContent='✓ All merges complete — '+mergeAnim.mergeGroups.length+' group(s) reduced to single states.';
+    return;
+  }
+  var group=mergeAnim.mergeGroups[mergeAnim.mergeStep];
+  var groupNodes=mergeAnim.nodes.filter(function(n){return group.indexOf(n.id)>=0;});
+
+  // label update
+  document.getElementById('merge-label').textContent=
+    'Merging: {'+group.join(', ')+'} → Q'+mergeAnim.nodes.find(function(n){return n.id===group[0];}).groupIdx;
+
+  // Compute centroid
+  var cx=0,cy=0;
+  groupNodes.forEach(function(n){cx+=n.x;cy+=n.y;});
+  cx/=groupNodes.length;cy/=groupNodes.length;
+
+  // Pick representative = first node in group
+  var rep=groupNodes[0];
+
+  // Animate convergence
+  var DURATION=900; // ms
+  var start=null;
+  var startPositions=groupNodes.map(function(n){return{x:n.x,y:n.y};});
+
+  function animate(ts){
+    if(!start) start=ts;
+    var elapsed=ts-start;
+    var progress=Math.min(elapsed/DURATION,1);
+    var ease=1-Math.pow(1-progress,3); // ease-out cubic
+
+    groupNodes.forEach(function(n,i){
+      if(n===rep){
+        // rep moves to centroid
+        n.x=lerp(startPositions[i].x,cx,ease);
+        n.y=lerp(startPositions[i].y,cy,ease);
+      } else {
+        // others move to rep's centroid and fade
+        n.x=lerp(startPositions[i].x,cx,ease);
+        n.y=lerp(startPositions[i].y,cy,ease);
+        n.alpha=1-ease;
+      }
+    });
+
+    drawMergeFrame();
+
+    if(progress<1){
+      mergeAnim.raf=requestAnimationFrame(animate);
+    } else {
+      // finalize: hide non-reps, snap rep to centroid
+      groupNodes.forEach(function(n){
+        if(n!==rep){n.merged=true;n.alpha=0;}
+        else{n.x=cx;n.y=cy;}
+      });
+      // brief flash on merged node
+      flashMergeNode(rep,function(){
+        mergeAnim.mergeStep++;
+        setTimeout(runMergePhase,400);
+      });
+    }
+  }
+  mergeAnim.raf=requestAnimationFrame(animate);
+}
+
+function flashMergeNode(node,cb){
+  var count=0,maxFlash=4;
+  var originalColor=node.color;
+  function tick(){
+    count++;
+    node._flash=(count%2===0);
+    drawMergeFrame();
+    if(count<maxFlash*2) mergeAnim.raf=requestAnimationFrame(function(){setTimeout(tick,60);});
+    else{node._flash=false;drawMergeFrame();if(cb) cb();}
+  }
+  tick();
+}
+
+function lerp(a,b,t){return a+(b-a)*t;}
+
+function drawMergeFrame(){
+  var ctx=mergeAnim.ctx;
+  var W=mergeAnim.W,H=mergeAnim.H;
+  ctx.clearRect(0,0,W,H);
+
+  // Draw edges (very faint)
+  var dfa=mergeAnim.dfa;
+  var alpha_edge=0.18;
+  ctx.save();
+  ctx.globalAlpha=alpha_edge;
+  for(var si=0;si<dfa.states.length;si++){
+    var s=dfa.states[si];
+    var fromNode=mergeAnim.nodes.find(function(n){return n.id===s;});
+    if(!fromNode||fromNode.merged) continue;
+    for(var ai=0;ai<dfa.alphabet.length;ai++){
+      var sym=dfa.alphabet[ai];
+      var t=dfa.transition[s]&&dfa.transition[s][sym];
+      if(!t) continue;
+      var toNode=mergeAnim.nodes.find(function(n){return n.id===t;});
+      if(!toNode) continue;
+      ctx.beginPath();
+      ctx.strokeStyle='#1a1916';
+      ctx.lineWidth=1;
+      ctx.moveTo(fromNode.x,fromNode.y);
+      ctx.lineTo(toNode.x,toNode.y);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  // Draw nodes
+  mergeAnim.nodes.forEach(function(nd){
+    if(nd.alpha<=0) return;
+    ctx.save();
+    ctx.globalAlpha=nd.alpha;
+
+    // Flash effect
+    var fill=nd._flash?'#fff5e0':nd.isAccept?nd.color+'18':'#ffffff';
+    var stroke=nd.color;
+    var lw=nd._flash?3:1.8;
+
+    if(nd.isAccept){
+      ctx.beginPath();ctx.arc(nd.x,nd.y,nd.r+5,0,Math.PI*2);
+      ctx.strokeStyle=stroke;ctx.lineWidth=lw;ctx.stroke();
+    }
+    ctx.beginPath();ctx.arc(nd.x,nd.y,nd.r,0,Math.PI*2);
+    ctx.fillStyle=fill;ctx.fill();
+    ctx.strokeStyle=stroke;ctx.lineWidth=lw;ctx.stroke();
+
+    // label
+    ctx.fillStyle=nd._flash?nd.color:stroke;
+    ctx.font='bold 11px IBM Plex Mono,monospace';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(nd.label,nd.x,nd.y);
+
+    // start arrow
+    if(nd.isStart){
+      ctx.strokeStyle=nd.color;ctx.fillStyle=nd.color;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(nd.x-nd.r-28,nd.y);ctx.lineTo(nd.x-nd.r-5,nd.y);ctx.stroke();
+      arrowHead(ctx,nd.x-nd.r-5,nd.y,0,nd.color);
+    }
+
+    ctx.restore();
+  });
+
+  // Legend chips
+  var classes=mergeAnim.classes;
+  ctx.save();
+  ctx.font='10px IBM Plex Mono,monospace';
+  ctx.textBaseline='middle';
+  var lx=8,ly=H-20-(classes.length-1)*20;
+  for(var gi=0;gi<classes.length;gi++){
+    var col=GROUP_COLORS[gi%GROUP_COLORS.length];
+    ctx.fillStyle=col;
+    ctx.fillRect(lx,ly+gi*20-5,10,10);
+    ctx.fillStyle='#6b6860';
+    ctx.fillText('Q'+gi+': {'+classes[gi].join(', ')+'}',lx+14,ly+gi*20);
+  }
+  ctx.restore();
+}
+
+document.getElementById('btn-play-merge').addEventListener('click',function(){
+  if(mergeAnim.playing) return;
+  // reset and play
+  if(mergeAnim.raf){cancelAnimationFrame(mergeAnim.raf);mergeAnim.raf=null;}
+  mergeAnim.nodes.forEach(function(nd){nd.x=nd.sx;nd.y=nd.sy;nd.alpha=1;nd.merged=false;nd._flash=false;});
+  drawMergeFrame();
+  document.getElementById('merge-label').textContent='Animating merges...';
+  setTimeout(startMergePlay,100);
+});
+document.getElementById('btn-reset-merge').addEventListener('click',function(){
+  if(mergeAnim.raf){cancelAnimationFrame(mergeAnim.raf);mergeAnim.raf=null;}
+  mergeAnim.playing=false;
+  mergeAnim.nodes.forEach(function(nd){nd.x=nd.sx;nd.y=nd.sy;nd.alpha=1;nd.merged=false;nd._flash=false;});
+  drawMergeFrame();
+  document.getElementById('btn-play-merge').textContent='▶ Play';
+  document.getElementById('merge-label').textContent=
+    mergeAnim.mergeGroups.length===0
+      ? 'DFA is already minimal — no merges needed'
+      : mergeAnim.mergeGroups.length+' equivalence class(es) will be merged. Press Play to animate.';
+});
+</script>
+</body>
+</html>
